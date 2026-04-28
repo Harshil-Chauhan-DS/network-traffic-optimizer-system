@@ -12,7 +12,7 @@
     - Packet struct        (Member 2)
     - RouteEntry struct    (Member 1 + 4)
     - DSU struct           (Member 1 - Kruskal)
-    - Graph class
+    - Graph class (Updated with C++11 fixes & negative edge tracking)
     - buildTestNetwork()   -- 12-node shared topology
     - buildTestPackets()   -- 20 packets for Member 2
     - buildNetwork()       -- dynamic input dispatcher
@@ -129,7 +129,8 @@ struct RouteEntry {
 struct DSU {
     vector<int> parent, rank_;
     DSU(int n) : parent(n), rank_(n, 0) {
-        iota(parent.begin(), parent.end(), 0);
+        // C++11 Fix: Standard loop instead of std::iota for robust legacy support
+        for(int i = 0; i < n; ++i) parent[i] = i;
     }
     int find(int x) {
         if (parent[x] != x) parent[x] = find(parent[x]);
@@ -152,16 +153,18 @@ struct DSU {
 class Graph {
 public:
     int V, E;
+    bool hasNegativeEdge; // Tracks negative edges for Dijkstra fallback
     vector<string>               nodeNames;
-    vector<vector<pair<int,int>>> adj;    // forward  adj[u] = {v, w}
-    vector<vector<pair<int,int>>> radj;   // reverse  radj[v] = {u, w}
+    vector<vector<pair<int,int> > > adj;    // forward  adj[u] = {v, w}
+    vector<vector<pair<int,int> > > radj;   // reverse  radj[v] = {u, w}
     vector<Edge>                 edges;   // flat directed list
 
     Graph(int v, const vector<string>& names)
-        : V(v), E(0), nodeNames(names), adj(v), radj(v) {}
+        : V(v), E(0), hasNegativeEdge(false), nodeNames(names), adj(v), radj(v) {}
 
     // Directed edge  u -> v
     void addDirectedEdge(int u, int v, int w) {
+        if (w < 0) hasNegativeEdge = true; // Flag negative edge
         adj[u].push_back({v, w});
         radj[v].push_back({u, w});
         edges.push_back({u, v, w});
@@ -170,6 +173,7 @@ public:
 
     // Undirected edge  u <-> v
     void addUndirectedEdge(int u, int v, int w) {
+        if (w < 0) hasNegativeEdge = true; // Flag negative edge
         adj[u].push_back({v, w});
         adj[v].push_back({u, w});
         radj[v].push_back({u, w});
@@ -188,12 +192,12 @@ public:
     }
 
     bool hasEdge(int u, int v) const {
-        for (auto [nb, w] : adj[u]) if (nb == v) return true;
+        for (auto edge : adj[u]) if (edge.first == v) return true;
         return false;
     }
 
     int getWeight(int u, int v) const {
-        for (auto [nb, w] : adj[u]) if (nb == v) return w;
+        for (auto edge : adj[u]) if (edge.first == v) return edge.second;
         return INF;
     }
 
@@ -206,8 +210,8 @@ public:
                 best[key] = e.weight;
         }
         vector<Edge> res;
-        for (auto& [k,w] : best)
-            res.push_back({k.first, k.second, w});
+        for (auto& kv : best)
+            res.push_back({kv.first.first, kv.first.second, kv.second});
         return res;
     }
 
@@ -217,8 +221,8 @@ public:
         for (int u = 0; u < V; ++u) {
             cout << "  " << left << setw(6) << name(u) << "-> ";
             if (adj[u].empty()) { cout << "(none)\n"; continue; }
-            for (auto [v,w] : adj[u])
-                cout << name(v) << "(" << w << "ms)  ";
+            for (auto edge : adj[u])
+                cout << name(edge.first) << "(" << edge.second << "ms)  ";
             cout << "\n";
         }
     }
@@ -226,7 +230,7 @@ public:
     void printSummary() const {
         cout << "\n  Nodes          : " << V << "\n";
         cout << "  Directed edges : " << E << "\n";
-        int minW = INF, maxW = 0, sumW = 0;
+        int minW = INF, maxW = -INF, sumW = 0;
         for (auto& e : edges) {
             minW = min(minW, e.weight);
             maxW = max(maxW, e.weight);
@@ -297,16 +301,16 @@ inline vector<Packet> buildTestPackets() {
 //    Lines  : u v w   (one directed edge per line)
 // ============================================================
 inline Graph loadFromFile(const string& filename) {
-    ifstream fin(filename);
+    ifstream fin(filename.c_str()); // C++11 Fix: ensure c_str() is used for wider compiler compatibility
     if (!fin.is_open()) {
         cout << "[ERROR] Cannot open: " << filename
-             << "  -- falling back to demo network.\n";
-        return Graph(0, {});
+             << "  -- returning empty graph.\n";
+        return Graph(0, vector<string>());
     }
     int V, E;
     if (!(fin >> V >> E) || V <= 0) {
         cout << "[ERROR] Bad header line.\n";
-        return Graph(0, {});
+        return Graph(0, vector<string>());
     }
     vector<string> names(V);
     for (int i = 0; i < V; ++i) fin >> names[i];
@@ -315,7 +319,7 @@ inline Graph loadFromFile(const string& filename) {
         int u, v, w;
         if (!(fin >> u >> v >> w) || u < 0 || u >= V || v < 0 || v >= V) {
             cout << "[ERROR] Bad edge at line " << i+3 << "\n";
-            return Graph(0, {});
+            return Graph(0, vector<string>());
         }
         g.addDirectedEdge(u, v, w);
     }
@@ -349,19 +353,7 @@ inline Graph loadFromTerminal() {
 }
 
 inline Graph buildNetwork() {
-    printHeader("Network Traffic Optimizer -- Input Mode");
-    cout << "\n  1  Use built-in 12-node demo network\n"
-         << "  2  Load from file  (e.g. network.txt)\n"
-         << "  3  Enter manually via terminal\n\n"
-         << "  Choice [1/2/3]: ";
-    int c; cin >> c;
-    if (c == 2) {
-        cout << "  Filename: ";
-        string f; cin >> f;
-        Graph g = loadFromFile(f);
-        if (g.V > 0) return g;
-    }
-    if (c == 3) return loadFromTerminal();
-    cout << "\n  Loading demo network...\n";
+    // TUI mode setup handled directly in main.cpp, 
+    // keeping this strictly as a safety net.
     return buildTestNetwork();
 }
