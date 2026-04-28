@@ -4,7 +4,7 @@
   Network Traffic Optimizer
 ============================================================
   Compile:
-    g++ -std=c++17 -O2 -o routing_engine routing_engine.cpp
+    g++ -std=c++11 -O2 -o routing_engine routing_engine.cpp
   Run:
     ./routing_engine
 
@@ -24,13 +24,16 @@
 
 #include "graph.h"
 
+// Forward declaration needed for Dijkstra's negative-edge fallback
+void bellmanFord(const Graph& g, int src);
+
 // ============================================================
 //  PATH HELPER -- reconstruct path from parent array
 // ============================================================
 vector<int> buildPath(const vector<int>& parent, int src, int dst) {
     vector<int> path;
     for (int c = dst; c != -1; c = parent[c]) path.push_back(c);
-    if (path.empty() || path.back() != src) return {};
+    if (path.empty() || path.back() != src) return vector<int>();
     reverse(path.begin(), path.end());
     return path;
 }
@@ -110,8 +113,10 @@ void bfs(const Graph& g, int src) {
     dist[src] = 0; q.push(src);
     while (!q.empty()) {
         int u = q.front(); q.pop();
-        for (auto [v, w] : g.adj[u])
+        for (auto edge : g.adj[u]) { // C++11 Fix
+            int v = edge.first;
             if (dist[v] == -1) { dist[v] = dist[u]+1; parent[v] = u; q.push(v); }
+        }
     }
 
     cout << "  " << left << setw(8) << "Dest"
@@ -146,8 +151,10 @@ void dfs(const Graph& g, int src) {
     function<void(int, int)> go = [&](int u, int depth) {
         visited[u] = true;
         cout << string(depth * 2, ' ') << "-> " << g.name(u) << "\n";
-        for (auto [v, w] : g.adj[u])
+        for (auto edge : g.adj[u]) { // C++11 Fix
+            int v = edge.first;
             if (!visited[v]) go(v, depth + 1);
+        }
     };
     go(src, 1);
 
@@ -167,7 +174,8 @@ void dfs(const Graph& g, int src) {
 // ============================================================
 bool cycleUtil(const Graph& g, int u, vector<int>& color, vector<int>& cyc) {
     color[u] = 1;
-    for (auto [v, w] : g.adj[u]) {
+    for (auto edge : g.adj[u]) { // C++11 Fix
+        int v = edge.first;
         if (color[v] == 1) { cyc.push_back(v); cyc.push_back(u); return true; }
         if (color[v] == 0 && cycleUtil(g, v, color, cyc)) {
             cyc.push_back(u); return true;
@@ -224,7 +232,7 @@ void topologicalSort(const Graph& g) {
 
     vector<int> indeg(g.V, 0);
     for (int u = 0; u < g.V; ++u)
-        for (auto [v, w] : g.adj[u]) indeg[v]++;
+        for (auto edge : g.adj[u]) indeg[edge.first]++; // C++11 Fix
 
     queue<int> q;
     for (int i = 0; i < g.V; ++i) if (indeg[i] == 0) q.push(i);
@@ -233,8 +241,10 @@ void topologicalSort(const Graph& g) {
     while (!q.empty()) {
         int u = q.front(); q.pop();
         order.push_back(u);
-        for (auto [v, w] : g.adj[u])
+        for (auto edge : g.adj[u]) { // C++11 Fix
+            int v = edge.first;
             if (--indeg[v] == 0) q.push(v);
+        }
     }
 
     if ((int)order.size() != g.V) {
@@ -255,6 +265,17 @@ void topologicalSort(const Graph& g) {
 // ============================================================
 void dijkstra(const Graph& g, int src) {
     printHeader("6. Dijkstra -- Minimum Latency Paths (Greedy)");
+
+    // NEGATIVE EDGE FALLBACK LOGIC
+    if (g.hasNegativeEdge) {
+        cout << "  [!] ERROR: Negative edge detected in network topology.\n"
+             << "      Dijkstra's algorithm cannot handle negative weights.\n"
+             << "      Automatically rerouting to Bellman-Ford...\n";
+        printSep();
+        bellmanFord(g, src); // Safe fallback
+        return;
+    }
+
     printExplain(
         "DIJKSTRA'S ALGORITHM",
         "Greedily picks the unvisited router with the smallest known\n"
@@ -266,13 +287,20 @@ void dijkstra(const Graph& g, int src) {
 
     vector<int> dist(g.V, INF), parent(g.V, -1);
     dist[src] = 0;
-    priority_queue<pair<int,int>, vector<pair<int,int>>, greater<>> pq;
+    
+    // C++11 Fix: explicit comparator syntax for priority queue
+    priority_queue<pair<int,int>, vector<pair<int,int> >, greater<pair<int,int> > > pq;
     pq.push({0, src});
 
     while (!pq.empty()) {
-        auto [d, u] = pq.top(); pq.pop();
+        int d = pq.top().first;  // C++11 Fix
+        int u = pq.top().second; // C++11 Fix
+        pq.pop();
+        
         if (d > dist[u]) continue;
-        for (auto [v, w] : g.adj[u]) {
+        for (auto edge : g.adj[u]) { // C++11 Fix
+            int v = edge.first;
+            int w = edge.second;
             if (dist[u] + w < dist[v]) {
                 dist[v] = dist[u] + w;
                 parent[v] = u;
@@ -364,12 +392,16 @@ void floydWarshall(const Graph& g) {
         "O(V^3) time  |  O(V^2) space"
     );
 
-    vector<vector<int>> dist(g.V, vector<int>(g.V, INF));
-    vector<vector<int>> nxt(g.V,  vector<int>(g.V, -1));
+    vector<vector<int> > dist(g.V, vector<int>(g.V, INF));
+    vector<vector<int> > nxt(g.V,  vector<int>(g.V, -1));
     for (int i = 0; i < g.V; ++i) dist[i][i] = 0;
+    
     for (int u = 0; u < g.V; ++u)
-        for (auto [v, w] : g.adj[u])
+        for (auto edge : g.adj[u]) { // C++11 Fix
+            int v = edge.first;
+            int w = edge.second;
             if (w < dist[u][v]) { dist[u][v] = w; nxt[u][v] = v; }
+        }
 
     for (int k = 0; k < g.V; ++k)
         for (int i = 0; i < g.V; ++i)
@@ -465,7 +497,9 @@ void primMST(const Graph& g, int start = 0) {
     vector<int> key(g.V, INF), parent(g.V, -1);
     vector<bool> inMST(g.V, false);
     key[start] = 0;
-    priority_queue<pair<int,int>, vector<pair<int,int>>, greater<>> pq;
+    
+    // C++11 Fix: explicit comparator syntax
+    priority_queue<pair<int,int>, vector<pair<int,int> >, greater<pair<int,int> > > pq;
     pq.push({0, start});
 
     cout << "  " << left << setw(10) << "Added"
@@ -473,17 +507,25 @@ void primMST(const Graph& g, int start = 0) {
     printSep();
     int total = 0;
     while (!pq.empty()) {
-        auto [k, u] = pq.top(); pq.pop();
+        int k = pq.top().first;  // C++11 Fix
+        int u = pq.top().second; // C++11 Fix
+        pq.pop();
+        
         if (inMST[u]) continue;
         inMST[u] = true; total += k;
+        
         if (parent[u] == -1)
             cout << "  " << setw(10) << g.name(u) << setw(16) << "(start)" << 0 << "\n";
         else
             cout << "  " << setw(10) << g.name(u)
                  << setw(16) << (g.name(parent[u]) + "->" + g.name(u))
                  << k << "ms\n";
-        for (auto [v, w] : g.adj[u])
+                 
+        for (auto edge : g.adj[u]) { // C++11 Fix
+            int v = edge.first;
+            int w = edge.second;
             if (!inMST[v] && w < key[v]) { key[v] = w; parent[v] = u; pq.push({w,v}); }
+        }
     }
     cout << "\n  Total backbone cost: " << total << "ms\n";
     cout << "\n  >> Prim and Kruskal produce equivalent MSTs.\n"
