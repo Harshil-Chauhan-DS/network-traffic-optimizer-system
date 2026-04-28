@@ -404,7 +404,19 @@ void huffmanCodes() {
          << (1.0 - (double)compBits/origBits) * 100 << "% reduction\n";
     cout << "\n  >> Huffman coding reduces header overhead on every packet.\n"
          << "     More frequent protocols get shorter codes.\n";
+
+    // Fix 27/04/2026
+    // Clean up dynamic memory to prevent memory leaks
+    function<void(HuffNode*)> deleteTree = [&](HuffNode* n) {
+        if (!n) return;
+        deleteTree(n->left);
+        deleteTree(n->right);
+        delete n;
+    };
+    deleteTree(pq.top());
+    // -------------------------
 }
+
 
 // ============================================================
 //  MAIN
