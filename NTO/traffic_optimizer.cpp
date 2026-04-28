@@ -4,7 +4,7 @@
   Network Traffic Optimizer
 ============================================================
   Compile:
-    g++ -std=c++17 -O2 -o traffic_optimizer traffic_optimizer.cpp
+    g++ -std=c++11 -O2 -o traffic_optimizer traffic_optimizer.cpp
   Run:
     ./traffic_optimizer
 
@@ -357,7 +357,9 @@ void huffmanCodes() {
          << "I=ICMP(" << 15 << ")  A=ACK(" << 10 << ")  B=BGP(" << 5 << ")\n\n";
 
     priority_queue<HuffNode*, vector<HuffNode*>, HuffCmp> pq;
-    for (auto& [c, f] : freq) pq.push(new HuffNode(c, f));
+    
+    // C++11 FIX: Replaced auto [c, f] with standard pair access
+    for (auto& p : freq) pq.push(new HuffNode(p.first, p.second));
 
     while (pq.size() > 1) {
         HuffNode* l = pq.top(); pq.pop();
@@ -381,8 +383,12 @@ void huffmanCodes() {
     printSep();
 
     int origBits = 0, compBits = 0;
-    for (auto& [c, f] : freq) {
-        int orig = 3; // 3 bits for 5 symbols standard encoding
+    
+    // C++11 FIX: Replaced auto [c, f] with standard pair access
+    for (auto& p : freq) {
+        char c = p.first;
+        int f = p.second;
+        int orig = 3; 
         int comp = codes[c].size();
         origBits += f * orig; compBits += f * comp;
         cout << "  " << setw(8) << names[c]
@@ -390,6 +396,7 @@ void huffmanCodes() {
              << setw(16) << codes[c]
              << orig << " bits -> " << comp << " bits\n";
     }
+    
     cout << "\n  Original encoding  : " << origBits << " bits\n";
     cout << "  Huffman encoding   : " << compBits << " bits\n";
     cout << fixed << setprecision(1);
