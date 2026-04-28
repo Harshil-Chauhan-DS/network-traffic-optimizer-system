@@ -4,7 +4,7 @@
   Network Traffic Optimizer
 ============================================================
   Compile:
-    g++ -std=c++17 -O2 -o packet_scheduler packet_scheduler.cpp
+    g++ -std=c++11 -O2 -o packet_scheduler packet_scheduler.cpp
   Run:
     ./packet_scheduler
 
@@ -162,7 +162,8 @@ void demoQuickSort(vector<Packet> pkts) {
 // ============================================================
 vector<Packet> countingSort(vector<Packet> arr) {
     int maxPri = 5;
-    vector<vector<Packet>> buckets(maxPri + 1);
+    // C++11 safe vector of vectors
+    vector<vector<Packet> > buckets(maxPri + 1);
     for (auto& p : arr) buckets[p.priority].push_back(p);
     vector<Packet> res;
     for (int i = 1; i <= maxPri; ++i)
