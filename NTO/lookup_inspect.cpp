@@ -4,7 +4,7 @@
   Network Traffic Optimizer
 ============================================================
   Compile:
-    g++ -std=c++17 -O2 -o lookup_inspect lookup_inspect.cpp
+    g++ -std=c++11 -O2 -o lookup_inspect lookup_inspect.cpp
   Run:
     ./lookup_inspect
 
@@ -26,7 +26,8 @@
 // ============================================================
 class HashTableChaining {
     int size;
-    vector<list<pair<string,string>>> table;
+    // C++11 Fix: added space between nested angle brackets
+    vector<list<pair<string,string> > > table;
 
     int hash(const string& key) const {
         int h = 0;
@@ -39,15 +40,19 @@ public:
 
     void insert(const string& ip, const string& nextHop) {
         int h = hash(ip);
-        for (auto& [k,v] : table[h])
-            if (k == ip) { v = nextHop; return; }
+        // C++11 Fix: replace auto [k,v] with standard pair loop
+        for (auto& kv : table[h]) {
+            if (kv.first == ip) { kv.second = nextHop; return; }
+        }
         table[h].push_back({ip, nextHop});
     }
 
     string lookup(const string& ip) const {
         int h = hash(ip);
-        for (auto& [k,v] : table[h])
-            if (k == ip) return v;
+        // C++11 Fix: replace auto [k,v]
+        for (auto& kv : table[h]) {
+            if (kv.first == ip) return kv.second;
+        }
         return "NOT FOUND";
     }
 
@@ -57,8 +62,10 @@ public:
         for (int i = 0; i < size; ++i) {
             if (table[i].empty()) continue;
             cout << "  " << setw(6) << i;
-            for (auto& [k,v] : table[i])
-                cout << "[" << k << " -> " << v << "]  ";
+            // C++11 Fix: replace auto [k,v]
+            for (auto& kv : table[i]) {
+                cout << "[" << kv.first << " -> " << kv.second << "]  ";
+            }
             cout << "\n";
         }
     }
@@ -82,19 +89,20 @@ void demoChaining() {
 
     HashTableChaining ht(11); // prime table size reduces collisions
 
-    vector<pair<string,string>> routes = {
+    vector<pair<string,string> > routes = {
         {"192.168.1.1","R1"}, {"10.0.0.1","R3"}, {"172.16.0.1","R5"},
         {"192.168.1.2","R2"}, {"10.0.0.2","R4"}, {"172.16.0.2","R6"},
         {"192.168.2.1","R7"}, {"10.0.1.1","R8"}, {"172.17.0.1","R9"},
     };
 
-    for (auto& [ip, hop] : routes) ht.insert(ip, hop);
+    // C++11 Fix: replace auto [ip, hop]
+    for (auto& r : routes) ht.insert(r.first, r.second);
 
     ht.printTable();
     cout << "  Max chain length: " << ht.maxChainLength() << "\n";
 
     cout << "\n  Lookup tests:\n";
-    for (auto& ip : {"192.168.1.1", "10.0.0.2", "99.99.99.99"}) {
+    for (auto ip : {"192.168.1.1", "10.0.0.2", "99.99.99.99"}) {
         cout << "  " << left << setw(18) << ip
              << "-> " << ht.lookup(ip) << "\n";
     }
@@ -108,7 +116,7 @@ void demoChaining() {
 // ============================================================
 class HashTableOpenAddr {
     int size;
-    vector<pair<string,string>> table; // {"",""}=empty, {"#",""}=deleted
+    vector<pair<string,string> > table; // {"",""}=empty, {"#",""}=deleted
     int probes = 0;
 
     int hash(const string& key) const {
@@ -120,14 +128,21 @@ class HashTableOpenAddr {
 public:
     HashTableOpenAddr(int sz) : size(sz), table(sz, {"",""}) {}
 
-    void insert(const string& ip, const string& hop) {
+        void insert(const string& ip, const string& hop) {
         int h = hash(ip), i = 0;
         while (table[(h+i)%size].first != "" &&
                table[(h+i)%size].first != "#" &&
-               table[(h+i)%size].first != ip)
+               table[(h+i)%size].first != ip) {
             i++;
+            // Fix 28/04/2026
+            if (i >= size) {
+                cout << "  [!] Error: Hash Table is fully saturated.\n";
+                return;
+            }
+        }
         table[(h+i)%size] = {ip, hop};
     }
+
 
     string lookup(const string& ip) {
         int h = hash(ip), i = 0;
@@ -167,15 +182,18 @@ void demoOpenAddr() {
     );
 
     HashTableOpenAddr ht(13);
-    vector<pair<string,string>> routes = {
+    vector<pair<string,string> > routes = {
         {"192.168.1.1","R1"}, {"10.0.0.1","R3"}, {"172.16.0.1","R5"},
         {"192.168.1.2","R2"}, {"10.0.0.2","R4"}, {"172.16.0.2","R6"},
     };
-    for (auto& [ip, hop] : routes) ht.insert(ip, hop);
+    
+    // C++11 Fix: replace auto [ip, hop]
+    for (auto& r : routes) ht.insert(r.first, r.second);
+    
     ht.printTable();
 
     cout << "\n  Lookup tests:\n";
-    for (auto& ip : {"192.168.1.1","172.16.0.2","55.55.55.55"})
+    for (auto ip : {"192.168.1.1","172.16.0.2","55.55.55.55"})
         cout << "  " << left << setw(18) << ip
              << "-> " << ht.lookup(ip) << "\n";
     cout << "  Total probes used: " << ht.getProbes() << "\n";
@@ -381,13 +399,20 @@ void npDiscussion(const Graph& g) {
     cout << "  Greedy nearest-neighbour heuristic (not optimal):\n";
     vector<bool> visited(g.V, false);
     int cur = 0, total = 0;
-    vector<int> tour = {cur};
+    vector<int> tour;
+    tour.push_back(cur);
     visited[cur] = true;
 
     for (int step = 1; step < g.V; ++step) {
         int best = -1, bestW = INF;
-        for (auto [v, w] : g.adj[cur])
+        
+        // C++11 Fix: replace auto [v, w]
+        for (auto edge : g.adj[cur]) {
+            int v = edge.first;
+            int w = edge.second;
             if (!visited[v] && w < bestW) { bestW = w; best = v; }
+        }
+        
         if (best == -1) {
             // try any unvisited node
             for (int i = 0; i < g.V; ++i)
